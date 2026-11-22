@@ -1,0 +1,68 @@
+'use strict';
+// Built app, real socket client and renderer stream. Only the head unit + backend are fixtures.
+const fs=require('fs'),path=require('path'),net=require('net'),assert=require('assert'),os=require('os');
+const root=path.resolve(__dirname,'..'),out=path.join(root,'test-output');fs.mkdirSync(out,{recursive:true});
+const socket=process.platform==='win32'?'\\\\.\\pipe\\go-video-test-'+process.pid:path.join(out,'ui.sock');
+process.env.GO_VIDEO_SOCKET=socket;
+process.env.MGU_RENDERD_FILE=path.join(out,'ui-stream.bin');
+const items=[{"id": "-123_456", "title": "\u0422\u0415\u0421\u0422\u041e\u0412\u042b\u0415 \u0414\u0410\u041d\u041d\u042b\u0415 \u00b7 BMW \u043d\u0430 \u0442\u0440\u0435\u043a\u0435", "channel": "Go Video", "duration_s": 120}, {"id": "-123_457", "title": "\u0422\u0415\u0421\u0422\u041e\u0412\u042b\u0415 \u0414\u0410\u041d\u041d\u042b\u0415 \u00b7 \u041f\u0443\u0442\u0435\u0448\u0435\u0441\u0442\u0432\u0438\u0435", "channel": "Go Video", "duration_s": 90}];
+const cmds=[],errors=[];let connection,frames=0,speed;
+const server=net.createServer(c=>{connection=c;let buf='';c.on('data',b=>{buf+=b;let i;while((i=buf.indexOf('\n'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);cmds.push(m);let reply;
+    if(m.cmd==='hello')reply={ev:'hello',service:'0.1.0',caps:['vk','hist','remote','download','health']};
+    if(m.cmd==='auth')reply={ev:'auth',state:'code',code:'VK ID',flow:'automatic',url:require('../native/st-govideo-d/oauth').begin({client_id:'12345',redirect_uri:'https://example.test/vk/callback',scope:'video'}).url};
+    if(m.cmd==='auth_status')reply={ev:'auth',state:'signed_out'};
+    if(m.cmd==='status')reply={ev:'state',state:'idle'};
+    if(m.cmd==='feed')reply={ev:'feed',which:m.which,items};
+    if(m.cmd==='channels')reply={ev:'channels',items:[{id:'-123',title:'BMW',handle:'bmw'}]};
+    if(m.cmd==='channel')reply={ev:'channel',id:m.id,items};
+    if(m.cmd==='playlists')reply={ev:'playlists',items:[{id:'42_1',title:'РњРѕР№ Р°Р»СЊР±РѕРј',count:2}]};
+    if(m.cmd==='playlist')reply={ev:'playlist',id:m.id,items};
+    if(m.cmd==='search')reply={ev:'results',q:m.q,items};
+    if(m.cmd==='remote')reply={ev:'remote',on:true,url:'http://192.0.2.1:8472/#'+'a'.repeat(32),expires:3600};
+    if(m.cmd==='library')reply={ev:'library',items:[]};
+    if(m.cmd==='positions')reply={ev:'positions',items:[]};
+    if(m.cmd==='play')reply={ev:'state',state:'playing',id:m.id,title:items[0].title};
+    if(m.cmd==='pause')reply={ev:'state',state:'paused',id:items[0].id};
+    if(m.cmd==='resume')reply={ev:'state',state:'playing',id:items[0].id};
+    if(m.cmd==='stop')reply={ev:'state',state:'idle'};
+    if(reply)c.write(JSON.stringify(reply)+'\n');
+}});});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+server.listen(socket,async()=>{try{
+    const {headUnit}=require(path.join(root,'kit/tools/hu-stub'));
+    const hu=headUnit(path.join(root,'dist/st_go_video'),{dataDir:path.join(out,'state'),fresh:true,sets:{language:'ru',battery:'never'},log:{info(){},warn(){},error(m,e){errors.push(String(e && e.stack || m));}},image:async()=>{}});
+    fs.mkdirSync(path.join(out,'state'),{recursive:true});
+    const capture=name=>fs.copyFileSync(process.env.MGU_RENDERD_FILE,path.join(out,name+'.bin'));
+    const present=hu.display.present.bind(hu.display);
+    hu.display.present=(name,cv,soft)=>{if(cv){frames++;hu.lastCv=cv;}return present(name,cv,soft);};
+    hu.ctx.signals.watch=async(iface,instance,handlers)=>{
+        if(handlers.statusCarSpeed2){speed=handlers.statusCarSpeed2;speed({speedVehicleCentreOfGravity:0});}
+        return {available:false,error:'fixture'};
+    };
+    hu.start();await sleep(300);
+    assert(connection,'real socket client connected');
+    await hu.handlers.BTN_HOME();await sleep(100);await hu.loopFn();
+    assert(hu.lastCv,'first app frame');capture('Go_Video_Home');
+    await hu.handlers.BTN_WL();await sleep(100);await hu.loopFn();
+    capture('Go_Video_Favorites');
+    await hu.handlers.BTN_PL();await sleep(100);await hu.loopFn();
+    capture('Go_Video_Albums');
+    connection.write(JSON.stringify({ev:'remote_do',do:'search',q:'BMW'})+'\n');await sleep(120);await hu.loopFn();
+    capture('Go_Video_Search');
+    assert(cmds.some(m=>m.cmd==='search' && m.q==='BMW'),'phone remote search reaches daemon');
+    connection.write(JSON.stringify({ev:'remote_do',do:'play',id:items[0].id})+'\n');await sleep(120);await hu.loopFn();
+    assert(cmds.some(m=>m.cmd==='play' && m.id===items[0].id),'VK item starts original player');
+    await hu.handlers.BTN_PLAY();await sleep(80);await hu.loopFn();assert(cmds.some(m=>m.cmd==='pause'),'pause');
+    await hu.handlers.BTN_PLAY();await sleep(80);await hu.loopFn();assert(cmds.some(m=>m.cmd==='resume'),'resume');
+    await hu.handlers.BTN_FAVE();await sleep(80);assert(cmds.some(m=>m.cmd==='favorite'),'favorite action available');
+    if(speed)speed({speedVehicleCentreOfGravity:1000});await sleep(80);await hu.loopFn();
+    assert(cmds.some(m=>m.cmd==='video' && m.on===false),'original podcast view / speed guard retained');
+    await hu.handlers.BTN_CLOSE();await sleep(80);assert(cmds.some(m=>m.cmd==='stop'),'close releases playback');
+    await hu.handlers.BTN_ACCOUNT();await sleep(80);await hu.loopFn();capture('Go_Video_Login');
+    assert.deepStrictEqual(errors,[]);
+    fs.writeFileSync(path.join(out,'ui-result.json'),JSON.stringify({frames,errors,commands:cmds.map(m=>m.cmd),vehicleAccessed:false,realVkAccountAccessed:false},null,2));
+    console.log(JSON.stringify({frames,errors,vehicleAccessed:false}));
+    connection.destroy();server.close();process.exit(0);
+}catch(e){console.error(e.stack);console.error(JSON.stringify({cmds,errors}));if(connection)connection.destroy();server.close();process.exit(1);}});
+process.on('unhandledRejection',e=>{console.error(e.stack);process.exit(1);});
+

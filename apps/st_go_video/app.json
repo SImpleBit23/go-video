@@ -1,0 +1,311 @@
+{
+  "id": "st_go_video",
+  "title": "Go Video",
+  "description": "VK Видео на BMW iDrive 7: просмотр, поиск, видеотека и плейлисты. Отдельный клиент на основе RideTube.",
+  "version": "0.1.1",
+  "license": "GPL-3.0-or-later",
+  "vendor": "custom",
+  "loggingId": "OAA6",
+  "iconGlyph": "GV",
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "statusCarSpeed2": "rs"
+    },
+    "de.bmw.infotainment.vehicle.CDS": {
+      "statusBattery2": "rs"
+    },
+    "de.bmw.infotainment.controlelements.SteeringWheelPushButton": {
+      "statusSearchSwitch1": "rs",
+      "_optional": "the steering wheel's next / previous"
+    },
+    "de.bmw.infotainment.controlelements.FrontCCU": {
+      "ccsControlTouchCCU": "w",
+      "_optional": "touch mode on the controller's touchpad while Go Video shows (two fingers scroll)"
+    },
+    "de.bmw.infotainment.ControllerElements": {
+      "ZBETouchFrontSide": "rs"
+    },
+    "org.genivi.am.commandinterface.CommandControl": {
+      "_instances": "1",
+      "_methods": [
+        "getListMainSinks"
+      ],
+      "_broadcasts": [
+        "volumeChanged",
+        "sinkMuteStateChanged"
+      ]
+    }
+  },
+  "screens": [
+    {
+      "name": "VIEW",
+      "kind": "canvas",
+      "title": "Go Video",
+      "hmi": false,
+      "fill": true,
+      "bg": "#0f0f0f",
+      "buttons": [
+        [
+          "BTN_PLAY",
+          "Play"
+        ],
+        [
+          "BTN_RW",
+          "-10 s"
+        ],
+        [
+          "BTN_FF",
+          "+10 s"
+        ],
+        [
+          "BTN_LIST",
+          "Player"
+        ],
+        [
+          "BTN_FIND",
+          "Search"
+        ]
+      ]
+    },
+    {
+      "name": "MAIN",
+      "kind": "menu",
+      "title": "Go Video",
+      "settings": true,
+      "items": [
+        [
+          "button",
+          "BTN_SEARCH",
+          "Search"
+        ],
+        [
+          "text",
+          "MAIN_INFO",
+          ""
+        ],
+        [
+          "button",
+          "BTN_NOW",
+          "Now playing"
+        ],
+        [
+          "button",
+          "BTN_CLOSE",
+          "Close video"
+        ],
+        [
+          "button",
+          "BTN_RESULTS",
+          "Results"
+        ],
+        [
+          "button",
+          "BTN_HOME",
+          "Home"
+        ],
+        [
+          "button",
+          "BTN_SUBS",
+          "Subscriptions"
+        ],
+        [
+          "button",
+          "BTN_WL",
+          "Watch later"
+        ],
+        [
+          "button",
+          "BTN_PL",
+          "Playlists"
+        ],
+        [
+          "button",
+          "BTN_HIST",
+          "History"
+        ],
+        [
+          "button",
+          "BTN_LIB",
+          "Library"
+        ],
+        [
+          "button",
+          "BTN_S1",
+          ""
+        ],
+        [
+          "button",
+          "BTN_S2",
+          ""
+        ],
+        [
+          "button",
+          "BTN_S3",
+          ""
+        ],
+        [
+          "button",
+          "BTN_S4",
+          ""
+        ],
+        [
+          "button",
+          "BTN_S5",
+          ""
+        ],
+        [
+          "button",
+          "BTN_S6",
+          ""
+        ],
+        [
+          "button",
+          "BTN_ACCOUNT",
+          "Sign in"
+        ],
+        [
+          "button",
+          "BTN_HEALTH",
+          "Health check"
+        ],
+        [
+          "button",
+          "BTN_REMOTE",
+          "Phone remote"
+        ],
+        [
+          "button",
+          "BTN_LOGS",
+          "Send logs to the developer"
+        ],
+        [
+          "text",
+          "MAIN_SB",
+          "Skip data: SponsorBlock (sponsor.ajay.app), CC BY-NC-SA 4.0"
+        ],
+        [
+          "button",
+          "BTN_FAVE",
+          "Добавить / убрать из избранного"
+        ]
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "key": "language",
+      "label": "Language",
+      "type": "choice",
+      "default": "auto",
+      "options": [
+        [
+          "auto",
+          "Auto"
+        ],
+        [
+          "en",
+          "English"
+        ],
+        [
+          "fr",
+          "FranГ§ais"
+        ],
+        [
+          "nl",
+          "Nederlands"
+        ],
+        [
+          "de",
+          "Deutsch"
+        ],
+        [
+          "es",
+          "EspaГ±ol"
+        ],
+        [
+          "it",
+          "Italiano"
+        ],
+        [
+          "pt",
+          "PortuguГЄs"
+        ],
+        [
+          "ru",
+          "Р СѓСЃСЃРєРёР№"
+        ],
+        [
+          "zh-CN",
+          "дё­ж–‡"
+        ]
+      ]
+    },
+    {
+      "key": "fill",
+      "label": "Fill the screen (crops the video; off: black side bars)",
+      "type": "bool",
+      "default": false,
+      "reset": 2
+    },
+    {
+      "key": "quality",
+      "label": "Video quality",
+      "type": "choice",
+      "default": "auto",
+      "options": [
+        [
+          "auto",
+          "Auto (720p on Wi-Fi, 480p on phone data)"
+        ],
+        [
+          "720",
+          "720p"
+        ],
+        [
+          "480",
+          "480p (less data)"
+        ],
+        [
+          "360",
+          "360p (least data)"
+        ]
+      ]
+    },
+    {
+      "key": "video_driving",
+      "label": "Video while driving - at your own risk, only for a car coded for video in motion (passengers); takes effect once parked",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "ytdlp_auto",
+      "label": "Update yt-dlp by itself: the newest release, looked for daily (off: the one in this Go Video service)",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "battery",
+      "label": "Parked: pause when the 12 V battery is under",
+      "type": "choice",
+      "default": "65",
+      "options": [
+        [
+          "60",
+          "60 %"
+        ],
+        [
+          "65",
+          "65 %"
+        ],
+        [
+          "70",
+          "70 %"
+        ],
+        [
+          "0",
+          "Never"
+        ]
+      ]
+    }
+  ]
+}
