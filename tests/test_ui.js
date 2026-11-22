@@ -41,6 +41,7 @@ server.listen(socket,async()=>{try{
     };
     hu.start();await sleep(300);
     assert(connection,'real socket client connected');
+    assert(cmds.some(m=>m.cmd==='feed' && m.which==='home'),'catalog requested as soon as the service advertises VK');
     await hu.handlers.BTN_HOME();await sleep(100);await hu.loopFn();
     assert(hu.lastCv,'first app frame');capture('Go_Video_Home');
     await hu.handlers.BTN_WL();await sleep(100);await hu.loopFn();

@@ -189,6 +189,7 @@ mgu.run({
             if (remote) remote.onMsg(m);
             if (m.ev === 'error') log.warn('st-govideo-d: ' + m.msg);
             if (m.ev === 'state') log.info('st-govideo-d: ' + m.state + (m.id ? ' ' + m.id : ''));
+            if (m.ev === 'hello' && model.can('vk')) openFeed();
             if (m.ev === 'auth') { log.info('st-govideo-d: account ' + m.state); if (m.state === 'signed_in') { if (mode === 'signin') show('home'); openFeed(); } }
             changed();
         });

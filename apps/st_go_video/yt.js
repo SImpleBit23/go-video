@@ -200,7 +200,7 @@ class Model {
             if (this.state === 'playing' && was !== 'playing' && was !== 'paused') { this.videoOn = null; this._video(); }
         } else if (m.ev === 'auth') {
             this.auth = { flow: typeof m.flow==='string' ? m.flow : 'manual', state: String(m.state || 'signed_out'), code: m.code ? String(m.code) : null, url: typeof m.url === 'string' ? m.url : null, msg: m.msg ? String(m.msg) : null };
-            if (this.auth.state !== 'signed_in') { this.feeds = {}; this.chans = null; this.chan = null; this.pls = null; this.plist = null; this._prune(); }   // signed out: nobody's feed left on screen
+            if (this.auth.state !== 'signed_in') { const home = this.can('vk') && this.feeds.home; this.feeds = home ? { home } : {}; this.chans = null; this.chan = null; this.pls = null; this.plist = null; this._prune(); }   // signed out: nobody's feed left on screen
         } else if (m.ev === 'channels') {
             if (!this.chans) return;
             this.chans.loading = false;

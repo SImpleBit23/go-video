@@ -25,7 +25,7 @@ const MEDIA_FILES = ['audio.m4a', 'index.bin', 'video.h264'];
 const VIDEO_DIR_MODE = 0o711;
 // thumb.rgba length -> [w, h]: 160x90 in caches from older proxies, 320x180 since 0.1.6
 const THUMB_SIZES = { 57600: [160, 90], 230400: [320, 180] };
-const VERSION = '0.1.4';   // component.json's (test_ytd.js checks): sent with a log report
+const VERSION = '0.1.5';   // component.json's (test_ytd.js checks): sent with a log report
 // the day this build was released (UTC), bumped with VERSION at each release (tools/release.py refuses one in the
 // future). A head unit clock before it is provably wrong: only then does TLS skip the certificate dates (certTime)
 const BUILT = '2026-11-21';
@@ -85,6 +85,7 @@ function defaults() {
         sponsorBlock: 'https://sponsor.ajay.app/api/skipSegments/',
         skip: ['sponsor', 'selfpromo', 'interaction', 'intro'], // SponsorBlock categories skipped (the play's own `skip` wins)
         sbCategories: ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'music_offtopic'], // looked up, sent in extras  // a prefetched stream lookup is used this long (ytfetch: 30 min, URLs: ~6 h)
+        streamStallMs: 20000, // fall back if an exhausted VK buffer stops making progress
         headMarginMs: 1500,  // on the head file: wait for audio.m4a this close to the head's end
         audioRetryMs: 1000,  // the audio start (connect + playFile) failed: tried once more after this
         underrunWaitMs: 500, // the player ran dry (underrun): started again at the clock after this
@@ -2451,6 +2452,8 @@ Daemon.prototype.play = async function (id, rect, fill, at, quality, skip, resto
     this.timeSent = false; // a `time` of this play went out (onTime)
     this.recovering = false;
     this.headWait = false;
+    this.headStop = null;
+    this.streamProgressAt = 0;
     this.switching = false;
     this.settle = null;
     this.fullReady = true;
@@ -2465,7 +2468,7 @@ Daemon.prototype.play = async function (id, rect, fill, at, quality, skip, resto
                 const x = this.extracting;   // its lookup is nearly there: wait for it rather than redo it
                 if (x && x.id === id) await withTimeout(x.done, 8000, 'prefetch').catch(() => undefined);
                 if (gen !== this.gen) return undefined;
-                headMs = await this.fetchVideo(id, dir, k || own.full ? 'retry' : undefined);
+                headMs = await this.fetchVideo(id, dir, k || own.full || this.streamFallbackId === id ? 'retry' : undefined);
                 break;
             } catch (e) {
                 if (gen !== this.gen) return undefined;
@@ -2545,7 +2548,7 @@ Daemon.prototype.startAudio = async function (file, gen) {
 Daemon.prototype.onFullAudio = function () {
     this.fullReady = true;
     if (!this.head || !this.ticking || this.switching) return undefined; // not playing yet: play() picks it
-    if (this.paused) {
+    if (this.paused && !this.headWait) {
         this.stoppedAt = this.elapsed;
         this.head = null;
         this.headWait = false;
@@ -2558,6 +2561,17 @@ Daemon.prototype.onFullAudio = function () {
 // ignores playFile on its own (car, 2026-11-20: replay OK, then no tick, the clock frozen at a quality restart's place).
 Daemon.prototype.switchToFull = async function () {
     if (this.headWait) {
+        const gen = this.gen;
+        this.switching = true;
+        await this.headStop;
+        if (gen !== this.gen) return undefined;
+        this.switching = false;
+        if (this.paused) {
+            this.stoppedAt = this.elapsed;
+            this.head = null;
+            this.headWait = false;
+            return undefined;
+        }
         this.log('audio: head -> full at ' + this.elapsed + ' (waiting)');
         this.stoppedAt = this.elapsed;
         this.head = null;
@@ -2599,12 +2613,22 @@ Daemon.prototype.switchToFull = async function () {
 Daemon.prototype.waitFull = function (ms) {
     this.log('audio: past the head at ' + ms + ', waiting for audio.m4a');
     this.headWait = true;
+    this.streamProgressAt = Date.now();
     this.elapsed = ms;
     this.firstTime(ms);
     this.toYtdec('pause');
     this.checkBuffering();
     this.sawPlay = false;             // (STOP: PAUSE leaves the player playing; switchToFull plays the full file anyway)
-    return this.audio.button('STOP');
+    this.headStop = Promise.resolve(this.audio.button('STOP')).catch((e) => this.log('audio stop on buffer: ' + e.message));
+    return this.headStop;
+};
+Daemon.prototype.fallbackStream = function () {
+    const c = this.cur;
+    const restore = this.restart || { ms: this.elapsed, paused: this.paused };
+    restore.full = true;
+    this.streamFallbackId = c.id;
+    this.log('VK: restarting with full download at ' + restore.ms + ' ms');
+    return this.play(c.id, c.rect, c.fill, null, c.height, c.skip, restore);
 };
 // ytfetch.py into a fresh dir; resolves once playable (audio complete or its head, and startVideoMs of video,
 // or all of it), rejects if it ends before. Resolves with the head's ms when it starts on the head only, else null.
@@ -2637,12 +2661,7 @@ Daemon.prototype.fetchVideo = function (id, dir, how) {
                 this.fetcher = null;
                 this.preparing = null;
                 if (streamFallback && started) {
-                    const c = this.cur;
-                    const restore = this.restart || { ms: this.elapsed, paused: this.paused };
-                    restore.full = true;
-                    this.log('VK: restarting with full download at ' + restore.ms + ' ms');
-                    this.play(id, c.rect, c.fill, null, c.height, c.skip, restore)
-                        .catch((e) => this.log(e));
+                    this.fallbackStream().catch((e) => this.log(e));
                     return;
                 }
                 if (done && why === 'exit 0') this.fetchedMs = Infinity;
@@ -2671,11 +2690,18 @@ Daemon.prototype.fetchVideo = function (id, dir, how) {
             else if (m.ev === 'audio_ready') {
                 audio = true;
                 pct(70);
-                if (started) this.onFullAudio();
+                if (started) {
+                    const gen = this.gen;
+                    Promise.resolve(this.onFullAudio()).catch((e) => {
+                        if (gen === this.gen) return this.failPlayback('audio switch: ' + e.message);
+                    });
+                }
                 else this.fullReady = true;
             }
             else if (m.ev === 'video') {
-                this.fetchedMs = Number(m.ms) || 0;
+                const fetched = Number(m.ms) || 0;
+                if (fetched > this.fetchedMs) this.streamProgressAt = Date.now();
+                this.fetchedMs = fetched;
                 if (ytdecAgain && this.child && this.ticking) { // the index begun again: a ytdec reading it from the start, at the clock
                     ytdecAgain = false;
                     this.killYtdec();
@@ -3149,6 +3175,12 @@ Daemon.prototype.ytdecCodec = function (child) {
     return this.refetch(c.height, c.height).catch((e) => this.log('h264 again: ' + e));
 };
 Daemon.prototype.watchdog = function () {
+    if (this.cur && this.headWait && this.fetcher && !this.fullReady && this.streamProgressAt
+        && Date.now() - this.streamProgressAt >= this.opts.streamStallMs) {
+        this.streamProgressAt = 0;
+        this.fallbackStream().catch((e) => this.log(e));
+        return;
+    }
     if (!this.child || this.state !== 'playing' || !this.videoOn || this.eof) return;
     // waiting for video not fetched yet (buffering, or the fetcher ended early): not a stall
     if (this.headWait || this.elapsed + 1000 > this.fetchedMs) { this.lastProgress = Date.now(); this.played = 0; return; }

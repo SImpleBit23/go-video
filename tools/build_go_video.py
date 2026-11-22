@@ -32,7 +32,7 @@ def normalize_app(source, target):
             if 'node_modules/oap-sdk' in member.name: continue
             raw = src.extractfile(member).read() if member.isfile() else None
             if raw and member.name.endswith(('package.json','kit/app-spec.json')):
-                value = json.loads(raw); value['version'] = '0.1.4'
+                value = json.loads(raw); value['version'] = '0.1.5'
                 raw = (json.dumps(value, ensure_ascii=False, indent=2)+'\n').encode(); member.size=len(raw)
             member.uid=member.gid=0; member.uname=member.gname=''
             out.addfile(member, io.BytesIO(raw) if raw is not None else None)
@@ -67,11 +67,11 @@ def build(output, sdk=None):
         target=ROOT/'oap-sdk'
         if sdk != target.resolve(): shutil.copytree(sdk,target,dirs_exist_ok=True)
         subprocess.run([sys.executable,str(ROOT/'kit/tools/build.py'),'--language','ru','st_go_video'],check=True)
-        normalize_app(dist/'st_go_video@0.1.1-ru.1.tgz',dist/'st_go_video@0.1.4.tgz')
+        normalize_app(dist/'st_go_video@0.1.1-ru.1.tgz',dist/'st_go_video@0.1.5.tgz')
     else:
         source=ROOT/'prebuilt/st_go_video@0.1.1.tgz'
         if not source.is_file(): raise ValueError('Provide --sdk-dir, or the SDK-free prebuilt app package')
-        normalize_app(source, dist/'st_go_video@0.1.4.tgz')
+        normalize_app(source, dist/'st_go_video@0.1.5.tgz')
     packer=ROOT/'tools/vendor-store/deploy/hu'
     for folder in (service,ROOT/'vendor-inputgate'):
         subprocess.run(['node',str(packer),'artifact',str(folder),'--out',str(dist)],check=True)
@@ -84,8 +84,8 @@ def build(output, sdk=None):
         row={k:v for k,v in meta.items() if k in fields}
         row['artifact']=dict(name=file.name,size=target.stat().st_size,sha256=sha(target),url=file.name)
         rows.append(row)
-    add(dist/'st_go_video@0.1.4.tgz',dict(id='st_go_video',kind='app',title='Go Video · тестовая версия',description='VK-клиент на основе RideTube. Гостевой веб-каталог и поиск без входа. Тестовый вход через VK ID после настройки приложения.',version='0.1.4',requires={'st-govideo-d':'0.1.4','mgu-render':'0.6.11','mgu-inputgate':'1.0.0','mgu-uplink':'0.7.0'},uninstallable=True,mguHmi=['ID7']))
-    for component,file in [(service/'component.json',dist/'st-govideo-d@0.1.4.tgz'),(ROOT/'vendor-inputgate/component.json',dist/'mgu-inputgate@1.1.0.tgz')]:
+    add(dist/'st_go_video@0.1.5.tgz',dict(id='st_go_video',kind='app',title='Go Video · тестовая версия',description='VK-клиент на основе RideTube. Гостевой веб-каталог и поиск без входа. Тестовый вход через VK ID после настройки приложения.',version='0.1.5',requires={'st-govideo-d':'0.1.5','mgu-render':'0.6.11','mgu-inputgate':'1.0.0','mgu-uplink':'0.7.0'},uninstallable=True,mguHmi=['ID7']))
+    for component,file in [(service/'component.json',dist/'st-govideo-d@0.1.5.tgz'),(ROOT/'vendor-inputgate/component.json',dist/'mgu-inputgate@1.1.0.tgz')]:
         add(file,json.loads(component.read_text(encoding='utf8')))
     node=json.loads((ROOT/'vendor-artifacts/upstream-catalog.json').read_text(encoding='utf8')) if (ROOT/'vendor-artifacts/upstream-catalog.json').is_file() else None
     node_entry=next((x for x in node['components'] if x['id']=='jap-node22'),None) if node else dict(id='jap-node22',kind='tool',title='Node.js 22',version='22.23.4',requires={'mgu-deploy':'0.7.0'},uninstallable=True,mguHmi=['ID7'])
@@ -96,7 +96,7 @@ def build(output, sdk=None):
         for name,minimum in item.get('requires',{}).items():
             if name not in byid or tuple(map(int,byid[name]['version'].split('.'))) < tuple(map(int,minimum.split('.'))): raise ValueError('Incomplete dependency closure: '+name)
     (folder/'catalog.json').write_text(json.dumps(dict(schema=2,components=rows),ensure_ascii=False,indent=2)+'\n',encoding='utf8')
-    with tarfile.open(dist/'st_go_video@0.1.4.tgz') as src:
+    with tarfile.open(dist/'st_go_video@0.1.5.tgz') as src:
         if any('oap-sdk' in m.name for m in src): raise ValueError('SDK was not removed')
     print('USB kit ready: '+str(output),flush=True)
 
